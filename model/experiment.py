@@ -11,17 +11,14 @@ import gc
 import matplotlib.pyplot as plt
 import seaborn as sns
 import datetime
+import subprocess
 
 
 def run_lightgbm(X_train:pd.DataFrame,y_train:pd.DataFrame,X_test:pd.DataFrame,file_name : str = None,
                  cat_feature : list = None, with_log : bool = False,
                  with_mlflow : bool = False, with_optuna : bool = False,
-                 splits : int = 5, params : dict = None,
+                 splits : int = 5, params : dict = None,slack_api = None,
                  early_stopping_round: int=None, save_feature_imp : bool = False):
-
-    if not file_name is None:
-        now = datetime.datetime.now
-        file_name = now
 
     if params == None:
         params = {
@@ -46,6 +43,9 @@ def run_lightgbm(X_train:pd.DataFrame,y_train:pd.DataFrame,X_test:pd.DataFrame,f
 
     if with_log:
         logger = getLogger('lgb_train')
+
+
+
 
     folds = KFold(n_splits=splits)
     oof = np.zeros(len(X_train))
@@ -80,9 +80,20 @@ def run_lightgbm(X_train:pd.DataFrame,y_train:pd.DataFrame,X_test:pd.DataFrame,f
         del lgb_model, train_x, train_y, valid_x, valid_y
         gc.collect()
 
+        slack_text = f'FOLD{fold_} {rmse}'
+        text = ''' "''' + "{'text':"+"'"+str(slack_text)+"'"+"}" + '''" '''
+        cmd = f"curl -X POST {slack_api} -d " + text
+        subprocess.run(cmd,shell=True)
+
+
     oof_mse = mean_squared_error(predictions, y_train)
     oof_rmse = np.sqrt(oof_mse)
     logger.info(f"oof rmse: {oof_rmse}")
+
+    slack_text = f'OOF {oof_rmse}'
+    text = ''' "''' + "{'text':"+"'"+str(slack_text)+"'"+"}" + '''" '''
+    cmd = f"curl -X POST {slack_api} -d " + text
+    subprocess.run(cmd,shell=True)
 
     if save_feature_imp:
         feature_imp['all_fold'] = feature_imp.mean(axis=1)
@@ -94,3 +105,12 @@ def run_lightgbm(X_train:pd.DataFrame,y_train:pd.DataFrame,X_test:pd.DataFrame,f
 
 
     return models,oof,predictions
+
+
+
+# TODO
+# xgb
+
+# cat
+
+# NN
