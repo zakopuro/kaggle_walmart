@@ -14,10 +14,6 @@ import seaborn as sns
 import datetime
 import subprocess
 
-features = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'year', 'month', 'week', 'day', 'dayofweek', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2',
-            'snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'lag_t28', 'lag_t29', 'lag_t30', 'rolling_mean_t7', 'rolling_std_t7', 'rolling_mean_t30', 'rolling_mean_t90',
-            'rolling_mean_t180', 'rolling_std_t30', 'price_change_t1', 'price_change_t365', 'rolling_price_std_t7', 'rolling_price_std_t30', 'rolling_skew_t30', 'rolling_kurt_t30']
-
 
 def wrmsse_oof(oof):
     df_oof = pd.DataFrame()
@@ -29,11 +25,12 @@ def wrmsse_oof(oof):
 def run_lightgbm(X_train : pd.DataFrame, y_train : pd.DataFrame, X_test : pd.DataFrame,
                  file_name : str = None, logger = None, cat_feature : list = None,
                  with_mlflow : bool = False, with_optuna : bool = False, metric : WRMSSEEvaluator = None,lgb_metric : WRMSSEForLightGBM = None,
-                 splits : int = 5, params : dict = None,slack_api = None,
+                 splits : int = 5, params : dict = None,slack_api = None,features : list = None,
                  early_stopping_round: int=None, save_feature_imp : bool = False):
 
     logger.info('start lgb train')
-    if params == None:
+
+    if params is None:
         params = {
             'boosting_type': 'gbdt',
             'metric': 'rmse',
@@ -44,6 +41,12 @@ def run_lightgbm(X_train : pd.DataFrame, y_train : pd.DataFrame, X_test : pd.Dat
             'bagging_fraction': 0.75,
             'bagging_freq': 10,
             'colsample_bytree': 0.75}
+
+    if features is None:
+        features = ["item_id", "dept_id", "cat_id", "store_id", "state_id", "event_name_1", "event_type_1", "event_name_2", "event_type_2",
+                  "snap_CA", "snap_TX", "snap_WI", "sell_price", "lag_t28", "lag_t29", "lag_t30", "rolling_mean_t7", "rolling_std_t7", "rolling_mean_t30", "rolling_mean_t90",
+                  "rolling_mean_t180", "rolling_std_t30", "price_change_t1", "price_change_t365", "rolling_price_std_t7", "rolling_price_std_t30", "rolling_skew_t30", "rolling_kurt_t30"]
+
     if not early_stopping_round is None:
         params['early_stopping_rounds'] = early_stopping_round
 

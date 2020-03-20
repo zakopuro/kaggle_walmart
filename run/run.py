@@ -33,6 +33,12 @@ def get_args():
 
     return parser.parse_args()
 
+def load_datasets(feats):
+    dfs = [pd.read_pickle(f'features/{f}_train.pkl') for f in feats]
+    X_train = pd.concat(dfs, axis=1)
+    dfs = [pd.read_pickle(f'features/{f}_test.pkl') for f in feats]
+    X_test = pd.concat(dfs, axis=1)
+    return X_train, X_test
 
 def main(args,logger):
     logger.info('START')
@@ -46,20 +52,24 @@ def main(args,logger):
     del train_df,train_fold_df,valid_fold_df,calendar,prices
     gc.collect()
 
+    with open('config/config.json') as f:
+        cfg = json.load(f)
+        features = cfg['features']
+        lgb_params = cfg['lgb_params']
+        feats = cfg['FE']
 
-    # X_train = pd.read_csv('data/input/fe_train.csv.zip')
-    X_train = pd.read_pickle('data/input/train_1y.pkl')
-    X_train = X_train.dropna(subset=['sell_price']).reset_index(drop=True)
-    y_train = X_train['demand']
-    X_test = pd.read_pickle('data/input/fe_test.pkl')
     file_name = args.file_name
     with open('config/slack_api.json') as f:
         slack_api = json.load(f)['slack_api']
+    X_train,X_test = load_datasets(feats)
+    y_train = X_train['demand']
+
     logger.info('Loaded data')
 
     # 学習/予測
-    lgb_models,lgb_oof,lgb_predictions = ex.run_lightgbm(X_train=X_train,y_train=y_train,X_test=X_test,early_stopping_round=50,splits=1,
-                                                        file_name=file_name,slack_api=slack_api,logger=logger,metric=evaluator,lgb_metric=lgb_evaluator)
+    lgb_models,lgb_oof,lgb_predictions = ex.run_lightgbm(X_train=X_train,y_train=y_train,X_test=X_test,early_stopping_round=50,splits=1,features= features,
+                                                        file_name=file_name,slack_api=slack_api,logger=logger,metric=evaluator,lgb_metric=lgb_evaluator,
+                                                        params=lgb_params)
 
     del X_train,y_train
     gc.collect()

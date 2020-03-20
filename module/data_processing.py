@@ -34,7 +34,10 @@ def reduce_mem_usage(df, verbose=True):
     return df
 
 
-def _read_data():
+def _read_data(days):
+    use_col = ['id','item_id','dept_id','cat_id','store_id','state_id']
+    d_col = ['d_'+str(d) for d in range(1913,1913-days,-1)]
+    use_col += d_col
     print('Reading files...')
     calendar = pd.read_csv('data/other/calendar.csv')
     calendar = reduce_mem_usage(calendar)
@@ -43,6 +46,7 @@ def _read_data():
     sell_prices = reduce_mem_usage(sell_prices)
     print('Sell prices has {} rows and {} columns'.format(sell_prices.shape[0], sell_prices.shape[1]))
     sales_train_validation = pd.read_csv('data/other/sales_train_validation.csv.zip')
+    sales_train_validation = sales_train_validation[use_col]
     print('Sales train validation has {} rows and {} columns'.format(sales_train_validation.shape[0], sales_train_validation.shape[1]))
     submission = pd.read_csv('data/submit/sample_submission.csv.zip')
     return calendar, sell_prices, sales_train_validation, submission
@@ -88,7 +92,7 @@ def _melt_and_merge(calendar, sell_prices, sales_train_validation, submission, n
     del sales_train_validation, test1, test2
     
     # get only a sample for fst training
-    data = data.loc[nrows:]
+    # data = data.loc[nrows:]
     
     # drop some calendar features
     calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
@@ -110,18 +114,6 @@ def _melt_and_merge(calendar, sell_prices, sales_train_validation, submission, n
 
     return data
 
-def _transform(data):
-    
-    nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
-    for feature in nan_features:
-        data[feature].fillna('unknown', inplace = True)
-        
-    cat = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
-    for feature in cat:
-        encoder = preprocessing.LabelEncoder()
-        data[feature] = encoder.fit_transform(data[feature])
-    
-    return data
 
 def transform(data):
     
@@ -172,12 +164,16 @@ def simple_fe(data):
     
     return data
 
-def pre_processing():
-    calendar, sell_prices, sales_train_validation, submission = _read_data()
+def pre_processing(days=1913):
+    calendar, sell_prices, sales_train_validation, submission = _read_data(days)
     data = _melt_and_merge(calendar, sell_prices, sales_train_validation, submission, nrows = 27500000, merge = True)
     data = transform(data)
-    data = simple_fe(data)
-    data.to_csv('data/other/kernel_predata.csv.zip',index=False,compression='zip')
+    # data = simple_fe(data)
+    train = data[data['part'] == 'train']
+    test = data[data['part'] == 'test1']
+    train.to_pickle(f"train_{days}.pkl")
+    test.to_pickle("test.pkl")
+    # data.to_csv('data/other/kernel_predata.csv.zip',index=False,compression='zip')
 
 
 
@@ -198,4 +194,4 @@ def postprocessing(test:pd.DataFrame,submission:pd.DataFrame):
 
 
 if __name__ == "__main__":
-    pre_processing()
+    pre_processing(days=365+28)

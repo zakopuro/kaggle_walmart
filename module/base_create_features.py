@@ -44,8 +44,9 @@ class Feature(metaclass=ABCMeta):
         self.name = self.__class__.__name__
         self.train = pd.DataFrame()
         self.test = pd.DataFrame()
-        self.train_path = Path(self.dir) / f'{self.name}_train.ftr'
-        self.test_path = Path(self.dir) / f'{self.name}_test.ftr'
+        self.train_path = Path(self.dir) / f'{self.name}_train.pkl'
+        self.test_path = Path(self.dir) / f'{self.name}_test.pkl'
+        print(self.train_path)
 
     def run(self):
         with timer(self.name):
@@ -61,5 +62,5 @@ class Feature(metaclass=ABCMeta):
         raise NotImplementedError
 
     def save(self):
-        self.train.to_feather(str(self.train_path))
-        self.test.to_feather(str(self.test_path))
+        self.train.to_pickle(str(self.train_path))
+        self.test.to_pickle(str(self.test_path))

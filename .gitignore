@@ -142,3 +142,5 @@ config/slack_api.json
 
 # model
 model/models/*
+
+features/*.pkl
