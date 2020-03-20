@@ -25,7 +25,6 @@ def get_args():
 if __name__ == "__main__":
     # args = get_args()
     # print(args.message)
-    # slack_api = 'https://hooks.slack.com/services/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'
     with open('config/slack_api.json') as f:
         slack_api = json.load(f)['slack_api']
 

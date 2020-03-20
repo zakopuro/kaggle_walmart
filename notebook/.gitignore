@@ -128,17 +128,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# vscode
-.vscode/
 
-# data
-data/
-
-# DS_store
-.DS_Store
-
-# api
-config/slack_api.json
-
-# model
-model/models/*
+.ipynb_checkpoints/*

@@ -1,13 +1,20 @@
 import sys
 import pandas as pd
 import numpy as np
+sys.path.append('./')
 import model.experiment as ex
-import module.data_processing as dpro
+from module import logger as logg
+import module.data_processing as processing
+from module.walmart_metric import WRMSSEEvaluator,WRMSSEForLightGBM
 import gc
 import argparse
 import subprocess
 import datetime
 import json
+import pickle
+from logging import Logger, Formatter, handlers, StreamHandler, getLogger
+import warnings
+warnings.simplefilter('ignore')
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -27,38 +34,83 @@ def get_args():
     return parser.parse_args()
 
 
+def main(args,logger):
+    logger.info('START')
+    train_df = pd.read_csv('data/other/sales_train_validation.csv.zip')
+    train_fold_df = train_df.iloc[:, :-28]
+    valid_fold_df = train_df.iloc[:, -28:]
+    calendar = pd.read_csv('data/other/calendar.csv')
+    prices = pd.read_csv('data/other/sell_prices.csv.zip')
+    evaluator = WRMSSEEvaluator(train_fold_df, valid_fold_df, calendar, prices)
+    lgb_evaluator = WRMSSEForLightGBM(train_fold_df, valid_fold_df, calendar, prices)
+    del train_df,train_fold_df,valid_fold_df,calendar,prices
+    gc.collect()
 
-def main():
-    args = get_args()
-    X_train = pd.read_pickle('data/')
-    y_train = pd.read_pickle('data/')
-    X_test = pd.read_pickle('data/')
+
+    # X_train = pd.read_csv('data/input/fe_train.csv.zip')
+    X_train = pd.read_pickle('data/input/train_1y.pkl')
+    X_train = X_train.dropna(subset=['sell_price']).reset_index(drop=True)
+    y_train = X_train['demand']
+    X_test = pd.read_pickle('data/input/fe_test.pkl')
     file_name = args.file_name
     with open('config/slack_api.json') as f:
         slack_api = json.load(f)['slack_api']
+    logger.info('Loaded data')
 
     # 学習/予測
-    lgb_models,lgb_oof,lgb_predictions = ex.run_lightgbm(X_train=X_train,y_train=y_train,X_test=X_test,file_name=file_name)
+    lgb_models,lgb_oof,lgb_predictions = ex.run_lightgbm(X_train=X_train,y_train=y_train,X_test=X_test,early_stopping_round=50,splits=1,
+                                                        file_name=file_name,slack_api=slack_api,logger=logger,metric=evaluator,lgb_metric=lgb_evaluator)
 
+    del X_train,y_train
+    gc.collect()
 
     # 後処理
-    tmp_sub = X_test[['id']]
-    tmp_sub['pred'] = lgb_predictions
-    del X_train,y_train,X_test
+    X_test['demand'] = lgb_predictions
+    # 一時ファイル
+    X_test[['demand']].to_pickle(f'data/submit/{file_name}_submission.pkl')
+    sample_sub = pd.read_csv('data/submit/sample_submission.csv.zip')
+
+    sub = processing.postprocessing(X_test,sample_sub)
+
+    del X_test
     gc.collect()
-    tmp_sub = dpro.postprocessing(tmp_sub)
-    sample_submission = pd.read_csv('data/submit/sample_submission.csv.zip')
-    sample_submission.iloc[:len(tmp_sub)] = tmp_sub
 
     # sumit
-    sample_submission.to_csv(f'data/submit/{file_name}_submission.csv.zip',compression='zip',index=False)
+    sub.to_csv(f'data/submit/{file_name}_submission.csv.zip',compression='zip',index=False)
+
+    # save model
+    with open(f'model/models/{file_name}_model.pkl','wb') as f:
+        pickle.dump(lgb_models,f)
+
+    # save oof
+    with open(f'data/oof/{file_name}_oof.pkl','wb') as f:
+        pickle.dump(lgb_oof,f)
+
 
     if args.sub:
         message = args.message
-        submit_cmd = f'kaggle competitions submit -c m5-forecasting-accuracy -f ../data/sumit/{file_name}_submission.csv.zip -m "{message}"'
+        submit_cmd = f'kaggle competitions submit -c m5-forecasting-accuracy -f data/submit/{file_name}_submission.csv.zip -m "{message}"'
         subprocess.run(submit_cmd,shell=True)
+        logger.info('kaggle submit')
 
+        slack_text = 'submit完了'
+        text = ''' "''' + "{'text':"+"'"+str(slack_text)+"'"+"}" + '''" '''
+        cmd = f"curl -X POST {slack_api} -d " + text
+        subprocess.run(cmd,shell=True)
 
+    logger.info('END')
 
 if __name__ == "__main__":
-    main()
+    args = get_args()
+    logger = logg.Logger(name='walmart',filename=args.file_name)
+    # try:
+    main(args,logger)
+    # except:
+    #     with open('config/slack_api.json') as f:
+    #         slack_api = json.load(f)['slack_api']
+    #     slack_text = "error"
+    #     text = ''' "''' + "{'text':"+"'"+str(slack_text)+"'"+"}" + '''" '''
+    #     cmd = f"curl -X POST {slack_api} -d " + text
+    #     subprocess.run(cmd,shell=True)
+
+    #     logger.error('error')
