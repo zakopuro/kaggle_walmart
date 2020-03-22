@@ -11,6 +11,7 @@ import pandas as pd
 def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--force', '-f', action='store_true', help='Overwrite existing files')
+    parser.add_argument('--days', '-d', type=int)
     return parser.parse_args()
 
 

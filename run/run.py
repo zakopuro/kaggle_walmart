@@ -48,28 +48,33 @@ def main(args,logger):
     calendar = pd.read_csv('data/other/calendar.csv')
     prices = pd.read_csv('data/other/sell_prices.csv.zip')
     evaluator = WRMSSEEvaluator(train_fold_df, valid_fold_df, calendar, prices)
-    lgb_evaluator = WRMSSEForLightGBM(train_fold_df, valid_fold_df, calendar, prices)
-    del train_df,train_fold_df,valid_fold_df,calendar,prices
-    gc.collect()
+
 
     with open('config/config.json') as f:
         cfg = json.load(f)
         features = cfg['features']
         lgb_params = cfg['lgb_params']
         feats = cfg['FE']
+        cat_features = cfg['categorical_features']
 
     file_name = args.file_name
     with open('config/slack_api.json') as f:
         slack_api = json.load(f)['slack_api']
     X_train,X_test = load_datasets(feats)
+    X_train = X_train[X_train['date'] >= '2015-03-24'].reset_index(drop=True)
     y_train = X_train['demand']
+
+    # product = X_train[['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']].drop_duplicates()
+    # lgb_evaluator = WRMSSEForLightGBM(product, X_train, train_df)
+    del train_df,train_fold_df,valid_fold_df,calendar,prices
+    gc.collect()
 
     logger.info('Loaded data')
 
     # 学習/予測
     lgb_models,lgb_oof,lgb_predictions = ex.run_lightgbm(X_train=X_train,y_train=y_train,X_test=X_test,early_stopping_round=50,splits=1,features= features,
-                                                        file_name=file_name,slack_api=slack_api,logger=logger,metric=evaluator,lgb_metric=lgb_evaluator,
-                                                        params=lgb_params)
+                                                        file_name=file_name,slack_api=slack_api,logger=logger,metric=evaluator,
+                                                        params=lgb_params,cat_features=cat_features)
 
     del X_train,y_train
     gc.collect()

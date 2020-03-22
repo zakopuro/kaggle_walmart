@@ -3,7 +3,8 @@ from typing import Union
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-
+from scipy.sparse import csr_matrix
+import gc
 
 class WRMSSEEvaluator(object):
 
@@ -91,9 +92,86 @@ class WRMSSEEvaluator(object):
         return np.mean(all_scores)
 
 
-class WRMSSEForLightGBM(WRMSSEEvaluator):
+# class WRMSSEForLightGBM(WRMSSEEvaluator):
+
+#     def feval(self, preds, dtrain):
+#         if len(preds) > 853720:
+#             preds = preds[-853720:]
+#         preds = preds.reshape(self.valid_df[self.valid_target_columns].shape)
+#         score = self.score(preds)
+#         return 'WRMSSE', score, False
+
+
+class WRMSSEForLightGBM(object):
+    def __init__(self, product: pd.DataFrame,X_train: pd.DataFrame,sales_train_val: pd.DataFrame):
+        NUM_ITEMS = 30490
+        self.product = product
+        weight_mat = np.c_[np.identity(NUM_ITEMS).astype(np.int8), #item :level 12
+                   np.ones([NUM_ITEMS,1]).astype(np.int8), # level 1
+                   pd.get_dummies(product.state_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.store_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.cat_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.dept_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.state_id.astype(str) + product.cat_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.state_id.astype(str) + product.dept_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.store_id.astype(str) + product.cat_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.store_id.astype(str) + product.dept_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.item_id.astype(str),drop_first=False).astype('int8').values,
+                   pd.get_dummies(product.state_id.astype(str) + product.item_id.astype(str),drop_first=False).astype('int8').values
+                   ].T
+        self.weight_mat_csr = csr_matrix(weight_mat)
+        self.weight1, self.weight2 = self.weight_calc(X_train,product,sales_train_val)
+
+    def weight_calc(self,data,product,sales_train_val):
+
+        # calculate the denominator of RMSSE, and calculate the weight base on sales amount
+        
+        d_name = ['d_' + str(i+1) for i in range(1913)]
+        
+        sales_train_val = self.weight_mat_csr * sales_train_val[d_name].values
+        
+        # calculate the start position(first non-zero demand observed date) for each item / 商品の最初の売上日
+        # 1-1914のdayの数列のうち, 売上が存在しない日を一旦0にし、0を9999に置換。そのうえでminimum numberを計算
+        df_tmp = ((sales_train_val>0) * np.tile(np.arange(1,1914),(self.weight_mat_csr.shape[0],1)))
+        
+        start_no = np.min(np.where(df_tmp==0,9999,df_tmp),axis=1)-1
+        
+        
+        # denominator of RMSSE / RMSSEの分母
+        weight1 = np.sum((np.diff(sales_train_val,axis=1)**2),axis=1)/(1913-start_no)
+        
+        # calculate the sales amount for each item/level
+        df_tmp = data[(data['date'] > '2016-03-27') & (data['date'] <= '2016-04-24')]
+        df_tmp['amount'] = df_tmp['demand'] * df_tmp['sell_price']
+        df_tmp =df_tmp.groupby(['id'])['amount'].apply(np.sum).values
+        
+        weight2 = self.weight_mat_csr * df_tmp
+        weight2 = weight2/np.sum(weight2)
+
+        return weight1, weight2
 
     def feval(self, preds, dtrain):
-        preds = preds.reshape(self.valid_df[self.valid_target_columns].shape)
-        score = self.score(preds)
-        return 'WRMSSE', score, False
+        NUM_ITEMS = 30490
+        # actual obserbed values / 正解ラベル
+        y_true = dtrain.get_label()
+
+        # number of columns
+        num_col = len(y_true)//NUM_ITEMS
+        
+        # reshape data to original array((NUM_ITEMS*num_col,1)->(NUM_ITEMS, num_col) ) / 推論の結果が 1 次元の配列になっているので直す
+        reshaped_preds = preds.reshape(num_col, NUM_ITEMS).T
+        reshaped_true = y_true.reshape(num_col, NUM_ITEMS).T
+        
+        # x_name = ['pred_' + str(i) for i in range(num_col)]
+        # x_name2 = ["act_" + str(i) for i in range(num_col)]
+
+        train = np.array(self.weight_mat_csr*np.c_[reshaped_preds, reshaped_true])
+        
+        score = np.sum(
+                    np.sqrt(
+                        np.mean(
+                            np.square(
+                                train[:,:num_col] - train[:,num_col:])
+                            ,axis=1) / self.weight1) * self.weight2)
+        
+        return 'wrmsse', score, False

@@ -15,6 +15,7 @@ import datetime
 import subprocess
 
 
+
 def wrmsse_oof(oof):
     df_oof = pd.DataFrame()
     for i,d in enumerate(range(1886,1914,1)):
@@ -23,7 +24,7 @@ def wrmsse_oof(oof):
 
 
 def run_lightgbm(X_train : pd.DataFrame, y_train : pd.DataFrame, X_test : pd.DataFrame,
-                 file_name : str = None, logger = None, cat_feature : list = None,
+                 file_name : str = None, logger = None, cat_features : list = None,
                  with_mlflow : bool = False, with_optuna : bool = False, metric : WRMSSEEvaluator = None,lgb_metric : WRMSSEForLightGBM = None,
                  splits : int = 5, params : dict = None,slack_api = None,features : list = None,
                  early_stopping_round: int=None, save_feature_imp : bool = False):
@@ -32,21 +33,22 @@ def run_lightgbm(X_train : pd.DataFrame, y_train : pd.DataFrame, X_test : pd.Dat
 
     if params is None:
         params = {
-            'boosting_type': 'gbdt',
-            'metric': 'rmse',
-            'objective': 'regression',
-            'n_jobs': -1,
-            'seed': 236,
-            'learning_rate': 0.1,
-            'bagging_fraction': 0.75,
-            'bagging_freq': 10,
-            'colsample_bytree': 0.75}
+                'boosting_type': 'gbdt',
+                'metric': 'rmse',
+                'objective': 'regression',
+                'n_jobs': -1,
+                'seed': 236,
+                'learning_rate': 0.1,
+                'bagging_fraction': 0.75,
+                'bagging_freq': 10,
+                'colsample_bytree': 0.75}
 
     if features is None:
-        features = ["item_id", "dept_id", "cat_id", "store_id", "state_id", "event_name_1", "event_type_1", "event_name_2", "event_type_2",
-                  "snap_CA", "snap_TX", "snap_WI", "sell_price", "lag_t28", "lag_t29", "lag_t30", "rolling_mean_t7", "rolling_std_t7", "rolling_mean_t30", "rolling_mean_t90",
-                  "rolling_mean_t180", "rolling_std_t30", "price_change_t1", "price_change_t365", "rolling_price_std_t7", "rolling_price_std_t30", "rolling_skew_t30", "rolling_kurt_t30"]
-
+        features = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'year', 'month', 'week', 'day', 'dayofweek', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2',
+            'snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'lag_t28', 'lag_t29', 'lag_t30', 'rolling_mean_t7', 'rolling_std_t7', 'rolling_mean_t30', 'rolling_mean_t90',
+            'rolling_mean_t180', 'rolling_std_t30', 'price_change_t1', 'price_change_t365', 'rolling_price_std_t7', 'rolling_price_std_t30', 'rolling_skew_t30', 'rolling_kurt_t30']
+    logger.info(f'num use feature:{len(features)}')
+    logger.info(f'use features:{features}')
     if not early_stopping_round is None:
         params['early_stopping_rounds'] = early_stopping_round
 
@@ -67,14 +69,14 @@ def run_lightgbm(X_train : pd.DataFrame, y_train : pd.DataFrame, X_test : pd.Dat
     X_train['date'] = pd.to_datetime(X_train['date'])
     # X_test['date'] = pd.to_datetime(X_test['date'])
 
-    max_date = X_train['date'].max()
+    # max_date = X_train['date'].max()
     for fold_ in range(splits):
         logger.info(f"Fold {fold_}")
         if fold_ == 0:
-            val_date = max_date - np.timedelta64(28,'D')
-            val_date_list.append(val_date)
-            valid_x = X_train[(X_train['date']>val_date)][features]
-            train_x = X_train[(X_train['date']<=val_date)][features]
+            # val_date = max_date - np.timedelta64(28,'D')
+            # val_date_list.append(val_date)
+            valid_x = X_train[(X_train['date']>'2016-03-27') & (X_train['date']<='2016-04-24')][features]
+            train_x = X_train[(X_train['date']<='2016-03-27')][features]
 
         else:
             val_date = val_date - np.timedelta64(28,'D')
@@ -93,6 +95,7 @@ def run_lightgbm(X_train : pd.DataFrame, y_train : pd.DataFrame, X_test : pd.Dat
                         num_boost_round = 2500,
                         valid_sets = [trn_data, val_data],
                         # feval = lgb_metric.feval,
+                        categorical_feature=cat_features,
                         verbose_eval=100)
 
         pred = lgb_model.predict(valid_x)

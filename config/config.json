@@ -1,17 +1,20 @@
 {
-    "features" : ["item_id", "dept_id", "cat_id", "store_id", "state_id", "event_name_1", "event_type_1", "event_name_2", "event_type_2",
+    "features" : ["item_id", "dept_id", "cat_id", "store_id", "state_id", "event_name_1", "event_type_1", "event_name_2", "event_type_2","year", "month", "week", "day", "dayofweek",
                   "snap_CA", "snap_TX", "snap_WI", "sell_price", "lag_t28", "lag_t29", "lag_t30", "rolling_mean_t7", "rolling_std_t7", "rolling_mean_t30", "rolling_mean_t90",
                   "rolling_mean_t180", "rolling_std_t30", "price_change_t1", "price_change_t365", "rolling_price_std_t7", "rolling_price_std_t30", "rolling_skew_t30", "rolling_kurt_t30"],
-    "FE" : ["Base","Date","Price","Time"],
+    "categorical_features" : ["item_id","dept_id","cat_id","store_id","state_id","event_name_1","event_type_1","event_name_2","event_type_2","week","dayofweek"],
+    "FE" : ["Base","Date","Price","Time","Weather"],
 
-    "lgb_params" : {
-                    "boosting_type": "gbdt",
-                    "metric": "rmse",
-                    "objective": "regression",
-                    "n_jobs": -1,
-                    "seed": 236,
+    "lgb_params" : {"num_leaves": 512,
+                    "objective":"rmse",
+                    "max_depth": -1,
                     "learning_rate": 0.1,
-                    "bagging_fraction": 0.75,
+                    "boosting": "gbdt",
+                    "feature_fraction": 0.75,
                     "bagging_freq": 10,
-                    "colsample_bytree": 0.75}
+                    "bagging_fraction": 0.75 ,
+                    "bagging_seed": 2434,
+                    "nthread":6,
+                    "device": "cpu",
+                    "verbosity": -1}
 }
